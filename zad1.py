@@ -7,6 +7,7 @@ import time
 # zadatak 1)
 
 if __name__ == '__main__':
+    start_time = time.time()
     threads = 7
     size = 2**15  # size of array of test numbersstart_time = time.time()
     ctx = cl.create_some_context(interactive=True)
