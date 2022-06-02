@@ -28,7 +28,7 @@ __kernel void find_primes(__global int* input, __global int* output, int arr_siz
             	printf(" is prime\n");
             	count++;
             }
-            else printf(" is not prime\n")
+            else printf(" is not prime\n");
         }
 
         printf("Total number of primes = %d", count);
