@@ -22,6 +22,6 @@ if __name__ == '__main__':
     code = "".join(open("./zad1.cl", 'r').readlines())
     p = cl.Program(ctx, code).build()
     p.find_primes(queue, (threads,), None, input_buf, helper_buf, np.int32(len(input_arr))).wait()
-    cl.enqueue_copy(p.getQueue(), helper_arr, helper_buf)
+    cl.enqueue_copy(queue, helper_arr, helper_buf)
     
     print("Duration: %s seconds" % (time.time() - start_time))
