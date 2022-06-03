@@ -1,6 +1,5 @@
 // Dominik Brdar, Paralelno programiranje, vježba 3, 2022.
 // zadatak 1)
-#include <stdatomic.h>
 
 int is_prim(int a) {
 	if (a < 4) return 1;
@@ -21,13 +20,13 @@ __kernel void find_primes(__global int* input, __global int* output, int arr_siz
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (gid == 0) {
-        atomic_int count = 0;
+        int count = 0;
 
         for(int i = 0; i < arr_size; i++) {
             printf("%d", input[i]);
             if (output[i]) {
             	printf(" is prime\n");
-            	count++;
+            	count = atomic_add(&count, 1);
             }
             else printf(" is not prime\n");
         }
