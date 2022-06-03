@@ -6,10 +6,72 @@
 #include "boundary.h"
 #include "jacobi.h"
 #include "cfdio.h"
-
+#include <CL/cl.hpp>
 
 int main(int argc, char **argv)
 {
+	// get all platforms (drivers), e.g. NVIDIA
+    std::vector<cl::Platform> all_platforms;
+    cl::Platform::get(&all_platforms);
+
+    if (all_platforms.size()==0) {
+        std::cout<<" No platforms found. Check OpenCL installation!\n";
+        exit(1);
+    }
+    cl::Platform default_platform=all_platforms[0];
+    std::cout << "Using platform: "<<default_platform.getInfo<CL_PLATFORM_NAME>()<<"\n";
+
+    // get default device (CPUs, GPUs) of the default platform
+    std::vector<cl::Device> all_devices;
+    default_platform.getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
+    if(all_devices.size()==0){
+        std::cout<<" No devices found. Check OpenCL installation!\n";
+        exit(1);
+    }
+
+    // use device[1] because that's a GPU; device[0] is the CPU
+    cl::Device default_device=all_devices[1];
+    std::cout<< "Using device: "<<default_device.getInfo<CL_DEVICE_NAME>()<<"\n";
+
+    // a context is like a "runtime link" to the device and platform;
+    // i.e. communication is possible
+    cl::Context context({default_device});
+
+    // create the program that we want to execute on the device
+    cl::Program::Sources sources;
+
+    // calculates for each element; C = A + B
+    std::string kernel_code=
+		"   void kernel jacobistep_p(global double* psinew, global double* psi, global const int* m, "
+        "                          global const int* n) {"
+        "       int ID, Nthreads, n, ratio, start, stop;"
+        ""
+        "       ID = get_global_id(0);"
+        "       Nthreads = get_global_size(0);"
+        "       n = N[0];"
+        ""
+        "       ratio = (n / Nthreads);"  // number of elements for each thread
+        "       start = ratio * ID;"
+        "       stop  = ratio * (ID + 1);"
+        ""
+        "       for (int i=start; i<stop; i++) {"
+		"			psinew[((i % m)+1)*(m+2)+ i / m +1]=0.25*(psi[(i%m)*(m+2)+i/m+1]+psi[(i%m+2)*(m+2)+i/m+1]+psi[(i%m+1)*(m+2)+i/m]+psi[(i%m+1)*(m+2)+i/m+2]);"
+        "       }   "
+        "   }";
+	sources.push_back({kernel_code.c_str(), kernel_code.length()});
+
+    cl::Program program(context, sources);
+    if (program.build({default_device}) != CL_SUCCESS) {
+        std::cout << "Error building: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(default_device) << std::endl;
+        exit(1);
+    }
+	
+	cl::Buffer psi_new_buf(context, CL_MEM_READ_WRITE, (m+2)*(n+2)*sizeof(double));
+    cl::Buffer psi_buf(context, CL_MEM_READ_WRITE, (m+2)*(n+2)*sizeof(double));
+
+	// create a queue (a queue of commands that the GPU will execute)
+    cl::CommandQueue queue(context, default_device);
+
 	int printfreq=1000; //output frequency
 	double error, bnorm;
 	double tolerance=0.0; //tolerance for convergence. <=0 means do not check
@@ -82,6 +144,9 @@ int main(int argc, char **argv)
 	//set the psi boundary conditions
 	boundarypsi(psi,m,n,b,h,w);
 
+	queue.enqueueWriteBuffer(psi_new_buf, CL_TRUE, 0, (m+2)*(n+2)*sizeof(double), psitmp);
+    queue.enqueueWriteBuffer(psi_buf, CL_TRUE, 0, (m+2)*(n+2)*sizeof(double), psi);
+
 	//compute normalisation factor for error
 	bnorm=0.0;
 
@@ -92,6 +157,8 @@ int main(int argc, char **argv)
 	}
 	bnorm=sqrt(bnorm);
 
+	cl::KernelFunctor jacobistep_p(cl::Kernel(program, "jacobistep_p"), queue, cl::NullRange, cl::NDRange(10), cl::NullRange);
+
 	//begin iterative Jacobi loop
 	printf("\nStarting main loop...\n\n");
 	tstart=gettime();
@@ -99,7 +166,8 @@ int main(int argc, char **argv)
 	for(iter=1;iter<=numiter;iter++) {
 
 		//calculate psi for next iteration
-		jacobistep(psitmp,psi,m,n);
+		//jacobistep(psitmp,psi,m,n);
+		jacobistep_p(psitmp,psi,&m,&n);
 	
 		//calculate current error if required
 		if (checkerr || iter == numiter) {
@@ -117,12 +185,16 @@ int main(int argc, char **argv)
 			}
 		}
 
-		//copy back
+		//copy back 
+		/**
 		for(i=1;i<=m;i++) {
 			for(j=1;j<=n;j++) {
 				psi[i*(m+2)+j]=psitmp[i*(m+2)+j];
 			}
 		}
+		**/
+
+		queue.enqueueReadBuffer(psi_new_buf, CL_TRUE, 0, (m+2)*(n+2)*sizeof(double), psi);
 
 		//print loop information
 		if(iter%printfreq == 0) {
