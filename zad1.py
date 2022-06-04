@@ -8,8 +8,9 @@ import time
 
 if __name__ == '__main__':
     start_time = time.time()
-    threads = 7
+    
     size = 2**15  # size of array of test numbersstart_time = time.time()
+    G = size
     ctx = cl.create_some_context(interactive=True)
     queue = cl.CommandQueue(ctx)
     mf = cl.mem_flags
@@ -23,7 +24,7 @@ if __name__ == '__main__':
     
     code = "".join(open("./zad1.cl", 'r').readlines())
     p = cl.Program(ctx, code).build()
-    p.find_primes(queue, (threads,), None, input_buf, helper_buf, count, np.int32(len(input_arr))).wait()
+    p.find_primes(queue, (G,), None, input_buf, helper_buf, count, np.int32(len(input_arr))).wait()
     cl.enqueue_copy(queue, helper_arr, helper_buf)
     
     print("Duration: %s seconds" % (time.time() - start_time))

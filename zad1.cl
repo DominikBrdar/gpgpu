@@ -33,7 +33,7 @@ __kernel void find_primes(__global int* input, __global int* output, volatile __
             printf("%d", input[i]);
             if (output[i]) {
             	printf(" is prime\n");
-            	atomic_add(&count, 1);
+            	count++;
             }
             else printf(" is not prime\n");
     */
